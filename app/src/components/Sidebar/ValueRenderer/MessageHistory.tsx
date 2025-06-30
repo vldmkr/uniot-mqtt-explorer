@@ -14,6 +14,8 @@ import CustomIconButton from '../../helper/CustomIconButton'
 import { MessageId } from '../MessageId'
 import { useSubscription } from '../../hooks/useSubscription'
 import { useDecoder } from '../../hooks/useDecoder'
+import { decoders } from '../../../decoders'
+import { Decoder } from '../../../../../backend/src/Model/Decoder'
 
 const throttle = require('lodash.throttle')
 
@@ -28,15 +30,43 @@ interface Props {
 
 export const MessageHistory: React.FC<Props> = props => {
   const [, setLastUpdate] = React.useState(Date.now())
-  const updateNodeThrottled = React.useCallback(
-    throttle(() => {
-      setLastUpdate
-    }, 300),
-    []
-  )
+  const updateNodeThrottled = React.useCallback(throttle(setLastUpdate, 300), [])
 
   useSubscription(props.node?.onMessage, updateNodeThrottled)
   const decodeMessage = useDecoder(props.node)
+
+  // Memoized function to decode individual messages, checking all decoders
+  const decodeIndividualMessage = React.useCallback(
+    (message: q.Message) => {
+      if (!message.payload) {
+        return { message: message.payload, decoder: Decoder.NONE }
+      }
+
+      // First try the node's decoder
+      const nodeDecodedResult = decodeMessage(message)
+      if (nodeDecodedResult && nodeDecodedResult.decoder !== Decoder.NONE) {
+        return nodeDecodedResult
+      }
+
+      // If node decoder didn't work, try all decoders individually
+      for (const decoder of decoders) {
+        if (decoder.canDecodeData?.(message.payload)) {
+          try {
+            const result = decoder.decode(message.payload, undefined)
+            if (result && !result.error) {
+              return result
+            }
+          } catch {
+            // Continue to next decoder
+          }
+        }
+      }
+
+      // Fallback to original message
+      return { message: message.payload, decoder: Decoder.NONE }
+    },
+    [decodeMessage]
+  )
 
   function addNodeToCharts(event: React.MouseEvent) {
     event.preventDefault()
@@ -65,7 +95,8 @@ export const MessageHistory: React.FC<Props> = props => {
   const history = node.messageHistory.toArray()
   let previousMessage: q.Message | undefined = node.message
   const historyElements = [...history].reverse().map((message, idx) => {
-    const value = node.message ? decodeMessage(message)?.message?.format()[0] ?? null : null
+    const decodedResult = decodeIndividualMessage(message)
+    const value = decodedResult?.message?.format(node.type)[0] ?? null
 
     const element = {
       value: value ?? '',
@@ -96,7 +127,7 @@ export const MessageHistory: React.FC<Props> = props => {
     return element
   })
 
-  const value = node.message ? decodeMessage(node.message)?.message?.format()[0] ?? null : null
+  const value = node.message ? decodeMessage(node.message)?.message?.format(node.type)[0] ?? null : null
 
   const isMessagePlottable = isPlottable(value)
   return (

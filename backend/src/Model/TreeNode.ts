@@ -2,7 +2,7 @@ import { Destroyable } from './Destroyable'
 import { Edge, Message, RingBuffer, MessageHistory } from './'
 import { EventDispatcher } from '../../../events'
 
-export type TopicDataType = 'string' | 'json' | 'hex'
+export type TopicDataType = 'string' | 'json' | 'hex' | 'cbor'
 
 export class TreeNode<ViewModel extends Destroyable> {
   public sourceEdge?: Edge<ViewModel>

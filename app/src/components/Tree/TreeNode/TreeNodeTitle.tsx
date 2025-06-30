@@ -3,6 +3,8 @@ import React, { memo } from 'react'
 import { Theme, withStyles } from '@material-ui/core'
 import { TopicViewModel } from '../../../model/TopicViewModel'
 import { useDecoder } from '../../hooks/useDecoder'
+import { decoders } from '../../../decoders'
+import { Decoder } from '../../../../../backend/src/Model/Decoder'
 
 export interface TreeNodeProps extends React.HTMLAttributes<HTMLElement> {
   treeNode: q.TreeNode<TopicViewModel>
@@ -16,6 +18,39 @@ export interface TreeNodeProps extends React.HTMLAttributes<HTMLElement> {
 
 export const TreeNodeTitle = (props: TreeNodeProps) => {
   const decodeMessage = useDecoder(props.treeNode)
+
+  // Memoized function to decode individual messages, checking all decoders
+  const decodeIndividualMessage = React.useCallback(
+    (message: q.Message) => {
+      if (!message.payload) {
+        return { message: message.payload, decoder: Decoder.NONE }
+      }
+
+      // First try the node's decoder
+      const nodeDecodedResult = decodeMessage(message)
+      if (nodeDecodedResult && nodeDecodedResult.decoder !== Decoder.NONE) {
+        return nodeDecodedResult
+      }
+
+      // If node decoder didn't work, try all decoders individually
+      for (const decoder of decoders) {
+        if (decoder.canDecodeData?.(message.payload)) {
+          try {
+            const result = decoder.decode(message.payload, undefined)
+            if (result && !result.error) {
+              return result
+            }
+          } catch {
+            // Continue to next decoder
+          }
+        }
+      }
+
+      // Fallback to original message
+      return { message: message.payload, decoder: Decoder.NONE }
+    },
+    [decodeMessage]
+  )
 
   function renderSourceEdge() {
     const name = props.name || (props.treeNode.sourceEdge && props.treeNode.sourceEdge.name)
@@ -32,7 +67,8 @@ export const TreeNodeTitle = (props: TreeNodeProps) => {
     if (!props.treeNode.message || !props.treeNode.message.payload) {
       return ''
     }
-    const [value = ''] = decodeMessage(props.treeNode.message)?.message?.format(props.treeNode.type) ?? []
+    const decodedResult = decodeIndividualMessage(props.treeNode.message)
+    const [value = ''] = decodedResult?.message?.format(props.treeNode.type) ?? []
 
     return value.length > limit ? `${value.slice(0, limit)}…` : value
   }

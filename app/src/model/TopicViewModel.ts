@@ -12,7 +12,7 @@ function findDecoder<T extends Destroyable>(node: q.TreeNode<T>): TopicDecoder |
   return decoder
     ? {
         decoder,
-        format: undefined,
+        format: decoder.formats[0], // Use the first format from the decoder
       }
     : undefined
 }
@@ -34,7 +34,12 @@ export class TopicViewModel implements Destroyable {
 
   get decoder(): TopicDecoder | undefined {
     if (!this._decoder) {
-      this._decoder = this.owner && findDecoder(this.owner)
+      const newDecoder = this.owner && findDecoder(this.owner)
+      if (newDecoder) {
+        this._decoder = newDecoder
+        // Only dispatch if we found a decoder (async to avoid infinite loops)
+        setTimeout(() => this.onDecoderChange.dispatch(newDecoder), 0)
+      }
     }
 
     return this._decoder
@@ -50,6 +55,11 @@ export class TopicViewModel implements Destroyable {
     this.owner = treeNode
     this.selected = false
     this.expanded = false
+
+    // // Clear cached decoder when a new message arrives so it gets re-determined
+    // treeNode.onMessage.subscribe(() => {
+    //   this._decoder = undefined
+    // })
   }
 
   public retain() {
