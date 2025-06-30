@@ -1,5 +1,5 @@
 import Editor from './Editor'
-import { AttachFileOutlined, FormatAlignLeft } from '@material-ui/icons'
+import { AttachFileOutlined, FormatAlignLeft, Code, Security } from '@material-ui/icons'
 import Message from './Model/Message'
 import Navigation from '@material-ui/icons/Navigation'
 import PublishHistory from './PublishHistory'
@@ -14,6 +14,7 @@ import { EditorModeSelect } from './EditorModeSelect'
 import { globalActions, publishActions } from '../../../actions'
 import { KeyCodes } from '../../../utils/KeyCodes'
 import { default as AceEditor } from 'react-ace'
+import { formatCoseTemplate } from './encoders/CborCoseEncoder'
 
 interface Props {
   connectionId?: string
@@ -131,11 +132,33 @@ const EditorMode = memo(function EditorMode(props: {
     }
   }, [props.payload])
 
+  const formatCbor = useCallback(() => {
+    if (props.payload) {
+      try {
+        // Try to format as JSON first for better readability
+        const parsed = JSON.parse(props.payload)
+        const str = JSON.stringify(parsed, undefined, '  ')
+        updatePayload(str)
+      } catch (error) {
+        // If not JSON, leave as-is since CBOR can encode any data
+        props.globalActions.showError(`CBOR format: Expected JSON input. ${(error as Error)?.message}`)
+      }
+    }
+  }, [props.payload])
+
+  const formatCose = useCallback(() => {
+    // Generate a COSE template with current payload as the payload field
+    const template = formatCoseTemplate(props.payload)
+    updatePayload(template)
+  }, [props.payload])
+
   return (
     <div style={{ marginTop: '16px' }}>
       <div style={{ width: '100%', lineHeight: '64px', textAlign: 'center' }}>
         <EditorModeSelect value={props.editorMode} onChange={updateMode} focusEditor={props.focusEditor} />
         <FormatJsonButton editorMode={props.editorMode} focusEditor={props.focusEditor} formatJson={formatJson} />
+        <FormatCborButton editorMode={props.editorMode} focusEditor={props.focusEditor} formatCbor={formatCbor} />
+        <FormatCoseButton editorMode={props.editorMode} focusEditor={props.focusEditor} formatCose={formatCose} />
         <OpenFileButton editorMode={props.editorMode} openFile={openFile} />
         <div style={{ float: 'right' }}>
           <PublishButton publish={props.publish} focusEditor={props.focusEditor} />
@@ -163,6 +186,52 @@ const FormatJsonButton = React.memo(function FormatJsonButton(props: {
         id="sidebar-publish-format-json"
       >
         <FormatAlignLeft style={{ fontSize: '20px' }} />
+      </Fab>
+    </Tooltip>
+  )
+})
+
+const FormatCborButton = React.memo(function FormatCborButton(props: {
+  editorMode: string
+  focusEditor: () => void
+  formatCbor: () => void
+}) {
+  if (props.editorMode !== 'cbor') {
+    return null
+  }
+
+  return (
+    <Tooltip title="Format as JSON (for CBOR encoding)">
+      <Fab
+        style={{ width: '36px', height: '36px', margin: '0 8px' }}
+        onClick={props.formatCbor}
+        onFocus={props.focusEditor}
+        id="sidebar-publish-format-cbor"
+      >
+        <Code style={{ fontSize: '20px' }} />
+      </Fab>
+    </Tooltip>
+  )
+})
+
+const FormatCoseButton = React.memo(function FormatCoseButton(props: {
+  editorMode: string
+  focusEditor: () => void
+  formatCose: () => void
+}) {
+  if (props.editorMode !== 'cose') {
+    return null
+  }
+
+  return (
+    <Tooltip title="Generate COSE Sign1 template">
+      <Fab
+        style={{ width: '36px', height: '36px', margin: '0 8px' }}
+        onClick={props.formatCose}
+        onFocus={props.focusEditor}
+        id="sidebar-publish-format-cose"
+      >
+        <Security style={{ fontSize: '20px' }} />
       </Fab>
     </Tooltip>
   )

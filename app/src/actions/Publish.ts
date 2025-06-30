@@ -6,6 +6,7 @@ import { MqttMessage, makePublishEvent, rendererEvents, rendererRpc, readFromFil
 import { makeOpenDialogRpc } from '../../../events/OpenDialogRequest'
 import { showError } from './Global'
 import { Base64 } from 'js-base64'
+import { encodeCbor, encodeCoseSign1 } from '../components/Sidebar/Publish/encoders/CborCoseEncoder'
 
 export const setTopic = (topic?: string): Action => {
   return {
@@ -14,26 +15,27 @@ export const setTopic = (topic?: string): Action => {
   }
 }
 
-export const openFile = (encoding: 'utf8' = 'utf8') => async (dispatch: Dispatch<any>, getState: () => AppState) => {
-  try {
-    const file = await getFileContent(encoding)
-    if (file) {
-      dispatch(
-        setPayload(file.data))
+export const openFile =
+  (encoding: 'utf8' = 'utf8') =>
+  async (dispatch: Dispatch<any>, getState: () => AppState) => {
+    try {
+      const file = await getFileContent(encoding)
+      if (file) {
+        dispatch(setPayload(file.data))
+      }
+    } catch (error) {
+      dispatch(showError(error))
     }
-  } catch (error) {
-    dispatch(showError(error))
   }
-}
 
 type FileParameters = {
-  name: string,
+  name: string
   data: string
 }
 async function getFileContent(encoding: string): Promise<FileParameters | undefined> {
   const rejectReasons = {
     noFileSelected: 'No file selected',
-    errorReadingFile: 'Error reading file'
+    errorReadingFile: 'Error reading file',
   }
 
   const { canceled, filePaths } = await rendererRpc.call(makeOpenDialogRpc(), {
@@ -78,7 +80,7 @@ export const setEditorMode = (editorMode: string): Action => {
   }
 }
 
-export const publish = (connectionId: string) => (dispatch: Dispatch<Action>, getState: () => AppState) => {
+export const publish = (connectionId: string) => (dispatch: Dispatch<any>, getState: () => AppState) => {
   const state = getState()
   const topic = state.publish.manualTopic ?? state.tree.get('selectedTopic')?.path()
 
@@ -86,10 +88,41 @@ export const publish = (connectionId: string) => (dispatch: Dispatch<Action>, ge
     return
   }
 
+  let payload: Base64Message | null = null
+
+  if (state.publish.payload) {
+    // Handle different editor modes
+    switch (state.publish.editorMode) {
+      case 'cbor': {
+        const result = encodeCbor(state.publish.payload)
+        if (!result.success) {
+          dispatch(showError(result.error || 'CBOR encoding failed'))
+          return
+        }
+        payload = new Base64Message(result.data!)
+        break
+      }
+      case 'cose': {
+        const result = encodeCoseSign1(state.publish.payload)
+        if (!result.success) {
+          dispatch(showError(result.error || 'COSE Sign1 encoding failed'))
+          return
+        }
+        payload = new Base64Message(result.data!)
+        break
+      }
+      default: {
+        // For 'text', 'json', 'xml' - treat as string
+        payload = Base64Message.fromString(state.publish.payload)
+        break
+      }
+    }
+  }
+
   const publishEvent = makePublishEvent(connectionId)
   const mqttMessage: Partial<MqttMessage> = {
     topic,
-    payload: state.publish.payload ? Base64Message.fromString(state.publish.payload) : null,
+    payload,
     retain: state.publish.retain,
     qos: state.publish.qos,
   }

@@ -37,6 +37,20 @@ export function EditorModeSelect(props: Props) {
         label="json"
         labelPlacement="top"
       />
+      <FormControlLabel
+        value="cbor"
+        style={labelStyle}
+        control={<Radio color="primary" />}
+        label="cbor"
+        labelPlacement="top"
+      />
+      <FormControlLabel
+        value="cose"
+        style={labelStyle}
+        control={<Radio color="primary" />}
+        label="cose"
+        labelPlacement="top"
+      />
     </RadioGroup>
   )
 }
