@@ -66,6 +66,18 @@ export class Base64Message {
           const hex = Base64Message.toHex(this)
           return [hex, undefined]
         }
+        case 'cbor': {
+          // For CBOR format, if this message was already decoded by the CBOR decoder,
+          // it will contain JSON string data, so we should format it as JSON
+          const str = this.toUnicodeString()
+          try {
+            const json = JSON.parse(str)
+            return [JSON.stringify(json, undefined, '  '), 'json']
+          } catch {
+            // If it's not valid JSON, return as-is (might be original CBOR data)
+            return [str, undefined]
+          }
+        }
         default: {
           const str = this.toUnicodeString()
           return [str, undefined]
